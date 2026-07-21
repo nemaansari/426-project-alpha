@@ -39,3 +39,12 @@
   retry-safe (idempotent) way — a network blip between the gateway and
   appointment-service must never result in the same booking being applied
   twice on retry.
+
+## prescription-service
+- **Latency SLO:** Endpoint `GET /prescription/{patient}` must respond within **300 ms at p95**. The user of this endpoint would be patients who have used **appointment-service** and are retreiving doctor's notes from those appointments. Many patients would be accessing this endpoint hence exceeding threshold would result in delay to all the patients accessing the service
+- **Reliability SLO:** The **prescription-service** endpoint must succeed **at least 99.9%** of the time. A failed lookup means a retry, which is time consuming and annoying, especially for patients
+
+## prescribe-service
+- **Latency SLO:** Endpoint `POST /prescribe/{patient}` must respond within **500 ms at p95**. The user of this endpoint are doctors, providers, facility who are trying to list prescription and instruction to appropriate patients. Exceeding this endpoint result in a delay in their realtime appointment, and can consequentially affect their appointment schedule and time
+
+- **Reliability SLO:** **prescribe-service** endpoint must succeeed **at least 99.9%** of the time. Failing to perform a query request also means realtime delay for provider and can consequentially affect their appointment availability and schedule. Additionally, if queries were to be duplicated, it would result in a data integrity problem.

@@ -15,3 +15,5 @@ more.
   scheduling requests, routes them to the appropriate facility's
   availability-service, and reconciles the outcome with
   appointment-service before responding.
+- **prescription-service**: Manages prescription for each personal patient. Accepts query requests from provider/facility
+- **prescribe-service**: Routes query requests for prescription (create, update, delete) from provider/facility to appropriate patients
