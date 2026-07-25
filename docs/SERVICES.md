@@ -17,3 +17,31 @@ more.
   appointment-service before responding.
 - **prescription-service**: Manages prescription for each personal patient. Accepts query requests from provider/facility
 - **prescribe-service**: Routes query requests for prescription (create, update, delete) from provider/facility to appropriate patients
+
+## Sprint 2 system diagram
+
+Sprint 2 builds the first two services (`appointment-service` and
+`availability-service`) plus a sidecar. Each is its own container;
+`scheduling-gateway` is not built yet (targeted for Sprint 4).
+
+`appointment-audit-sidecar` is a classic sidecar: it never sits in the
+request path between a client and `appointment-service`. It only tails the
+access log that `appointment-service` writes to their shared volume, and
+`appointment-service` has no idea it exists. This is the healthcare
+audit-trail requirement from `docs/PROJECT.md` — a record of who booked,
+read, or cancelled what, kept separate from the booking logic itself.
+
+```mermaid
+flowchart LR
+    client["Patient / front-desk client"] -->|"GET/POST /appointments"| AS["appointment-service\n(container, port 4001)"]
+    coord["Scheduling coordinator client"] -->|"GET/POST /availability"| AV["availability-service\n(container, port 4002)"]
+
+    AS -->|"writes access.log"| VOL[("shared volume\naudit-data")]
+    VOL -->|"tailed every 3s"| SC["appointment-audit-sidecar\n(container, port 4003)"]
+    SC -->|"GET /audit-log"| auditor["Compliance / auditor client"]
+
+    style SC fill:#eee,stroke:#999,stroke-dasharray: 4 3
+```
+
+`appointment-service` and `availability-service` do not talk to each other
+yet — that coordination is `scheduling-gateway`'s job, added in Sprint 4.
