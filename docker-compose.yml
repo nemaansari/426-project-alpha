@@ -1,8 +1,22 @@
 services:
-  appointment-service:
+  appointment-service-a:
     build: ./appointment-service
-    ports:
-      - "4001:3000"
+    image: appointment-service
+    environment:
+      PORT: 3000
+      AUDIT_LOG_DIR: /data
+      BOOKING_LATENCY_MS: 250
+    volumes:
+      - audit-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  appointment-service-b:
+    image: appointment-service
     environment:
       PORT: 3000
       AUDIT_LOG_DIR: /data
@@ -27,7 +41,9 @@ services:
     volumes:
       - audit-data:/data
     depends_on:
-      appointment-service:
+      appointment-service-a:
+        condition: service_healthy
+      appointment-service-b:
         condition: service_healthy
 
   availability-service:
