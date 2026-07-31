@@ -32,9 +32,11 @@ This builds and starts three containers:
 
 | Service                     | Host port | Try it |
 |------------------------------|-----------|--------|
-| `appointment-service`        | 4001      | `curl http://localhost:4001/appointments/apt-1001` |
 | `availability-service`       | 4002      | `curl http://localhost:4002/availability/riverside-clinic` |
 | `appointment-audit-sidecar`  | 4003      | `curl http://localhost:4003/audit-log` |
+
+As of Sprint 3, `appointment-service` itself runs as two replicas behind
+Caddy rather than on its own host port — see below.
 
 `appointment-audit-sidecar` is a sidecar: it tails `appointment-service`'s
 request log from a shared Docker volume and has no effect on
@@ -47,3 +49,29 @@ Bring the system down (and drop the shared volume) with:
 ```
 docker compose down -v
 ```
+
+## Sprint 3: load balancing and load testing
+
+`appointment-service` now runs as two replicas (`appointment-service-a`,
+`appointment-service-b`), fronted by Caddy on host port 8080. Caddy
+health-checks each replica on `GET /health` and only routes to instances
+that are passing.
+
+```
+curl http://localhost:8080/appointments/apt-1001
+```
+
+Each response includes `servedBy` (the replying container's hostname), so
+running that curl repeatedly shows requests landing on different replicas.
+Stopping one replica (`docker compose stop appointment-service-b`) leaves
+the endpoint fully functional on the other.
+
+Run the k6 load test (10 virtual users, 30s) against it:
+
+```
+BASE_URL=http://localhost:8080 k6 run load-tests/sprint-3-load.js
+```
+
+See [`results/sprint-3-load-test.md`](results/sprint-3-load-test.md) for
+the latency/error-rate results and how they compare against
+[`docs/SLO.md`](docs/SLO.md).
