@@ -1,6 +1,7 @@
 import express from "express";
 import fs from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 
 const PORT = process.env.PORT || 3000;
 const AUDIT_LOG_DIR = process.env.AUDIT_LOG_DIR || "./data";
@@ -91,7 +92,7 @@ app.get("/appointments/:id", async (req, res) => {
     patientId: appointment.patientId,
     status: appointment.status,
   });
-  res.json(appointment);
+  res.json({ ...appointment, servedBy: os.hostname() });
 });
 
 app.post("/appointments", async (req, res) => {
