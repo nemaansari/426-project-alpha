@@ -1,0 +1,9 @@
+:8080 {
+	reverse_proxy appointment-service-a:3000 appointment-service-b:3000 {
+		lb_policy round_robin
+		health_uri /health
+		health_interval 5s
+		health_timeout 3s
+		health_status 200
+	}
+}
