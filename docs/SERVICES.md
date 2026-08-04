@@ -18,11 +18,11 @@ more.
 - **prescription-service**: Manages prescription for each personal patient. Accepts query requests from provider/facility
 - **prescribe-service**: Routes query requests for prescription (create, update, delete) from provider/facility to appropriate patients
 
-## Sprint 2 system diagram
+## System diagram (updated through Sprint 3)
 
-Sprint 2 builds the first two services (`appointment-service` and
-`availability-service`) plus a sidecar. Each is its own container;
-`scheduling-gateway` is not built yet (targeted for Sprint 4).
+Sprint 2 built the first two services (`appointment-service` and
+`availability-service`) plus a sidecar. `scheduling-gateway` is still not
+built (targeted for Sprint 4).
 
 `appointment-audit-sidecar` is a classic sidecar: it never sits in the
 request path between a client and `appointment-service`. It only tails the
@@ -30,6 +30,13 @@ access log that `appointment-service` writes to their shared volume, and
 `appointment-service` has no idea it exists. This is the healthcare
 audit-trail requirement from `docs/PROJECT.md` — a record of who booked,
 read, or cancelled what, kept separate from the booking logic itself.
+
+Sprint 3 replicates `appointment-service` behind Caddy and adds Redis.
+Redis is doing two distinct jobs here, not one: it's the cache that makes
+a repeated `GET /appointments/:id` fast, but it's also the *shared*
+appointment record both replicas read and write — without that second
+role, a cancel handled by one replica would be invisible to the other
+once its cached copy expired.
 
 
 ```mermaid
@@ -42,8 +49,8 @@ flowchart LR
 
     ASA --> |"writes access.log"| VOL[("shared volume\naudit-data")]
     ASB --> |"writes access.log"| VOL[("shared volume\naudit-data")]
-    ASA <-->|"cache-aside"| REDIS[("Redis\n(Cached layer)")]
-    ASB <-->|"cache-aside"| REDIS
+    ASA <-->|"cache-aside +\nshared record"| REDIS[("Redis\n(cache + shared appointment data)")]
+    ASB <-->|"cache-aside +\nshared record"| REDIS
     
     VOL -->|"tailed every 3s"| SC["appointment-audit-sidecar\n(container, port 4003)"]
     SC -->|"GET /audit-log"| auditor["Compliance / auditor client"]

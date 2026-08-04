@@ -19,7 +19,7 @@ Our system simulates a regional hospital appointment and patient scheduling plat
 ## Sprint 2: running the system
 
 Sprint 2 adds the first two containerized services plus a sidecar. See the
-[Sprint 2 system diagram](docs/SERVICES.md#sprint-2-system-diagram) in
+[system diagram](docs/SERVICES.md#system-diagram-updated-through-sprint-3) in
 `docs/SERVICES.md` for how they connect.
 
 Start everything with Docker Compose from the repository root:
