@@ -1,4 +1,7 @@
 services:
+  redis:
+    image: redis:7
+
   appointment-service-a:
     build: ./appointment-service
     image: appointment-service
@@ -6,8 +9,12 @@ services:
       PORT: 3000
       AUDIT_LOG_DIR: /data
       BOOKING_LATENCY_MS: 250
+      REDIS_URL: redis://redis:6379
+      CACHE_TTL_SECONDS: 20
     volumes:
       - audit-data:/data
+    depends_on:
+      - redis
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 5s
@@ -21,8 +28,12 @@ services:
       PORT: 3000
       AUDIT_LOG_DIR: /data
       BOOKING_LATENCY_MS: 250
+      REDIS_URL: redis://redis:6379
+      CACHE_TTL_SECONDS: 20
     volumes:
       - audit-data:/data
+    depends_on:
+      - redis
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 5s
