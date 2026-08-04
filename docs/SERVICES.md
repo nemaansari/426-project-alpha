@@ -31,12 +31,18 @@ access log that `appointment-service` writes to their shared volume, and
 audit-trail requirement from `docs/PROJECT.md` — a record of who booked,
 read, or cancelled what, kept separate from the booking logic itself.
 
+
 ```mermaid
 flowchart LR
-    client["Patient / front-desk client"] -->|"GET/POST /appointments"| AS["appointment-service\n(container, port 4001)"]
+    client["Patient / front-desk client"] -->|"GET/POST /appointments"| CADDY["caddy\n(load balancer, port 8080)"]
     coord["Scheduling coordinator client"] -->|"GET/POST /availability"| AV["availability-service\n(container, port 4002)"]
 
-    AS -->|"writes access.log"| VOL[("shared volume\naudit-data")]
+    CADDY -->|"round robin\n+ /health checks"| ASA["appointment-service-a\n(replica, :3000)"]
+    CADDY -->|"round robin\n+ /health checks"| ASB["appointment-service-b\n(replica, :3000)"]
+
+    ASA <-->|"cache-aside"| REDIS[("Redis\n(Cached layer)")]
+    ASB <-->|"cache-aside"| REDIS
+    
     VOL -->|"tailed every 3s"| SC["appointment-audit-sidecar\n(container, port 4003)"]
     SC -->|"GET /audit-log"| auditor["Compliance / auditor client"]
 
