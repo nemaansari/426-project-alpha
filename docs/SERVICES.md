@@ -40,6 +40,8 @@ flowchart LR
     CADDY -->|"round robin\n+ /health checks"| ASA["appointment-service-a\n(replica, :3000)"]
     CADDY -->|"round robin\n+ /health checks"| ASB["appointment-service-b\n(replica, :3000)"]
 
+    ASA --> |"writes access.log"| VOL[("shared volume\naudit-data")]
+    ASB --> |"writes access.log"| VOL[("shared volume\naudit-data")]
     ASA <-->|"cache-aside"| REDIS[("Redis\n(Cached layer)")]
     ASB <-->|"cache-aside"| REDIS
     
