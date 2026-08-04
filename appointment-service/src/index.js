@@ -16,63 +16,61 @@ const redis = createClient({ url: REDIS_URL });
 redis.on("error", (err) => console.error(`[CACHE] redis error: ${err.message}`));
 await redis.connect();
 
-const cacheKey = (appointmentId) => `appointment:cache:${appointmentId}`;
+// Two Redis namespaces, not one. `data` is the permanent shared record every
+// replica reads and writes, so a create or cancel on one replica is visible
+// on the other. `cache` is the short-TTL copy the read handler checks
+// first, and is what produces the hit/miss behavior.
 const dataKey = (appointmentId) => `appointment:data:${appointmentId}`;
+const cacheKey = (appointmentId) => `appointment:cache:${appointmentId}`;
+const IDS_KEY = "appointment:ids";
+const NEXT_ID_KEY = "appointment:next_id";
 
 const FACILITIES = ["riverside-clinic", "westside-medical-center", "downtown-urgent-care"];
 const DEPARTMENTS = ["Primary Care", "Cardiology", "Pediatrics", "Orthopedics"];
 
-let nextAppointmentId = 1004;
-const appointments = new Map([
-  [
-    "apt-1001",
-    {
-      appointmentId: "apt-1001",
-      patientId: "pat-2044",
-      providerId: "prov-118",
-      facility: "riverside-clinic",
-      department: "Primary Care",
-      timeSlot: "2026-07-28T13:30:00.000Z",
-      status: "confirmed",
-      reason: "Annual physical",
-    },
-  ],
-  [
-    "apt-1002",
-    {
-      appointmentId: "apt-1002",
-      patientId: "pat-2091",
-      providerId: "prov-204",
-      facility: "westside-medical-center",
-      department: "Cardiology",
-      timeSlot: "2026-07-29T15:00:00.000Z",
-      status: "confirmed",
-      reason: "Follow-up on blood pressure medication",
-    },
-  ],
-  [
-    "apt-1003",
-    {
-      appointmentId: "apt-1003",
-      patientId: "pat-2153",
-      providerId: "prov-118",
-      facility: "riverside-clinic",
-      department: "Primary Care",
-      timeSlot: "2026-07-30T09:00:00.000Z",
-      status: "cancelled",
-      reason: "Sore throat, possible strep",
-    },
-  ],
-]);
+// Seed data only. The real, live record for each appointment lives in
+// Redis under dataKey() from here on.
+const SEED_APPOINTMENTS = [
+  {
+    appointmentId: "apt-1001",
+    patientId: "pat-2044",
+    providerId: "prov-118",
+    facility: "riverside-clinic",
+    department: "Primary Care",
+    timeSlot: "2026-07-28T13:30:00.000Z",
+    status: "confirmed",
+    reason: "Annual physical",
+  },
+  {
+    appointmentId: "apt-1002",
+    patientId: "pat-2091",
+    providerId: "prov-204",
+    facility: "westside-medical-center",
+    department: "Cardiology",
+    timeSlot: "2026-07-29T15:00:00.000Z",
+    status: "confirmed",
+    reason: "Follow-up on blood pressure medication",
+  },
+  {
+    appointmentId: "apt-1003",
+    patientId: "pat-2153",
+    providerId: "prov-118",
+    facility: "riverside-clinic",
+    department: "Primary Care",
+    timeSlot: "2026-07-30T09:00:00.000Z",
+    status: "cancelled",
+    reason: "Sore throat, possible strep",
+  },
+];
 
-// The appointments map above is just seed data. The shared record every
-// replica reads/writes lives in Redis under dataKey(), not in this map, so
-// a cancel handled by the other replica is still visible here. SET NX means
-// whichever replica boots first seeds it and the rest are no-ops.
+// Every replica runs this on boot; SET NX and SADD are both safe to repeat,
+// so whichever replica starts first seeds the data and the rest are no-ops.
 async function seedAppointments() {
-  for (const appointment of appointments.values()) {
+  for (const appointment of SEED_APPOINTMENTS) {
     await redis.set(dataKey(appointment.appointmentId), JSON.stringify(appointment), { NX: true });
+    await redis.sAdd(IDS_KEY, appointment.appointmentId);
   }
+  await redis.set(NEXT_ID_KEY, "1003", { NX: true });
 }
 
 async function getAppointment(appointmentId) {
@@ -98,7 +96,9 @@ app.get("/health", (req, res) => {
 });
 
 app.get("/appointments", async (req, res) => {
-  const list = [...appointments.values()];
+  const ids = await redis.sMembers(IDS_KEY);
+  const records = ids.length ? await redis.mGet(ids.map(dataKey)) : [];
+  const list = records.filter(Boolean).map((raw) => JSON.parse(raw));
   await recordAudit({ action: "list" });
   res.json({ count: list.length, appointments: list });
 });
@@ -147,7 +147,9 @@ app.post("/appointments", async (req, res) => {
 
   await simulateLatency(BOOKING_LATENCY_MS);
 
-  const appointmentId = `apt-${nextAppointmentId++}`;
+  // INCR is atomic in Redis, so concurrent creates on both replicas can
+  // never be handed the same id.
+  const appointmentId = `apt-${await redis.incr(NEXT_ID_KEY)}`;
   const appointment = {
     appointmentId,
     patientId,
@@ -158,8 +160,8 @@ app.post("/appointments", async (req, res) => {
     status: "confirmed",
     reason,
   };
-  appointments.set(appointmentId, appointment);
   await redis.set(dataKey(appointmentId), JSON.stringify(appointment));
+  await redis.sAdd(IDS_KEY, appointmentId);
 
   await recordAudit({
     action: "create",
