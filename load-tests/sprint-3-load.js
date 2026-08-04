@@ -10,6 +10,7 @@ const APPOINTMENT_IDS = ["apt-1001", "apt-1002", "apt-1003"];
 export const options = {
   vus: 10,
   duration: "30s",
+  summaryTrendStats: ["avg", "min", "med", "p(50)", "p(95)", "p(99)", "max"],
 };
 
 export default function () {
