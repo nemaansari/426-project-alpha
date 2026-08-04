@@ -168,7 +168,9 @@ app.post("/appointments/:id/cancel", async (req, res) => {
   }
 
   appointment.status = "cancelled";
-  await redis.del(cacheKey(appointment.appointmentId));
+  await redis.set(cacheKey(appointment.appointmentId), JSON.stringify(appointment), {
+    EX: CACHE_TTL_SECONDS,
+  });
 
   await recordAudit({
     action: "cancel",
