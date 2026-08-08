@@ -3,18 +3,45 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { createClient } from "redis";
+import amqplib from "amqplib";
 
 const PORT = process.env.PORT || 3000;
 const AUDIT_LOG_DIR = process.env.AUDIT_LOG_DIR || "./data";
 const BOOKING_LATENCY_MS = Number(process.env.BOOKING_LATENCY_MS) || 250;
 const REDIS_URL = process.env.REDIS_URL || "redis://redis:6379";
 const CACHE_TTL_SECONDS = Number(process.env.CACHE_TTL_SECONDS) || 20;
+const RABBIT_URL = process.env.RABBIT_URL || "amqp://localhost";
+const CONFIRMATION_QUEUE = "appointment-confirmations";
 
 const auditLogFile = path.join(AUDIT_LOG_DIR, "access.log");
 
 const redis = createClient({ url: REDIS_URL });
 redis.on("error", (err) => console.error(`[CACHE] redis error: ${err.message}`));
 await redis.connect();
+
+// A booking confirmation is exactly the kind of work that doesn't need to
+// finish before the patient gets their response: it's a notification, not
+// something the caller is waiting on. Connect once at startup and reuse the
+// channel for every publish rather than reconnecting per request.
+const rabbitConnection = await amqplib.connect(RABBIT_URL);
+const rabbitChannel = await rabbitConnection.createChannel();
+await rabbitChannel.assertQueue(CONFIRMATION_QUEUE, { durable: true });
+
+async function enqueueConfirmation(appointment) {
+  try {
+    rabbitChannel.sendToQueue(
+      CONFIRMATION_QUEUE,
+      Buffer.from(JSON.stringify(appointment)),
+      { persistent: true }
+    );
+    console.log(`[PRODUCER] enqueued confirmation job: appointmentId=${appointment.appointmentId}`);
+  } catch (err) {
+    // A booking should still succeed even if the notification path is
+    // having a bad day - this is exactly the kind of graceful degradation
+    // an async path is supposed to buy you.
+    console.error(`[PRODUCER] failed to enqueue confirmation for ${appointment.appointmentId}:`, err.message);
+  }
+}
 
 // Two Redis namespaces, not one. `data` is the permanent shared record every
 // replica reads and writes, so a create or cancel on one replica is visible
@@ -169,6 +196,8 @@ app.post("/appointments", async (req, res) => {
     patientId,
     status: appointment.status,
   });
+
+  await enqueueConfirmation(appointment);
 
   res.status(201).json(appointment);
 });
