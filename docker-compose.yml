@@ -1,6 +1,21 @@
 services:
   redis:
     image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   appointment-service-a:
     build: ./appointment-service
@@ -11,10 +26,14 @@ services:
       BOOKING_LATENCY_MS: 250
       REDIS_URL: redis://redis:6379
       CACHE_TTL_SECONDS: 20
+      RABBIT_URL: amqp://rabbitmq
     volumes:
       - audit-data:/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 5s
@@ -30,10 +49,30 @@ services:
       BOOKING_LATENCY_MS: 250
       REDIS_URL: redis://redis:6379
       CACHE_TTL_SECONDS: 20
+      RABBIT_URL: amqp://rabbitmq
     volumes:
       - audit-data:/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  confirmation-worker:
+    image: appointment-service
+    command: ["node", "src/confirmation-worker.js"]
+    environment:
+      PORT: 3000
+      RABBIT_URL: amqp://rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 5s
